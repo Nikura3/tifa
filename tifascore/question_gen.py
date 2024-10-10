@@ -1,5 +1,6 @@
 import json
-from .openai_api import openai_completion
+#from .openai_api import openai_completion
+from .openai_api import openchat_completion
 from tqdm import tqdm
 import random
 
@@ -544,12 +545,13 @@ def parse_resp(resp):
 
 def get_question_and_answers(caption):
     this_prompt = prompt + caption+ "\nEntities"
-    resp = openai_completion(this_prompt)
-    
+    #resp = openai_completion(this_prompt)
+    resp = openchat_completion(this_prompt)
+
     with open('resp.json', 'w') as f:
         json.dump(resp, f)
     
-    question_instances = parse_resp(resp)
+    question_instances = parse_resp(resp[0]['content'])
     
     this_caption_qas = []
     

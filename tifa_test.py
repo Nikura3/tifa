@@ -1,6 +1,6 @@
-from tifa import get_question_and_answers, filter_question_and_answers, UnifiedQAModel, tifa_score_benchmark, tifa_score_single,  VQAModel
+from tifascore import get_question_and_answers, filter_question_and_answers, UnifiedQAModel, tifa_score_benchmark, tifa_score_single,  VQAModel
 import json
-import openai
+#import openai
 
 
 if __name__ == "__main__":
@@ -20,7 +20,7 @@ if __name__ == "__main__":
     #####################################
     
     # prepare the models
-    openai.api_key = "[OpenAI key]"
+    #openai.api_key = "[OpenAI key]"
     unifiedqa_model = UnifiedQAModel("allenai/unifiedqa-v2-t5-large-1363200")
     vqa_model = VQAModel("mplug-large")
     
