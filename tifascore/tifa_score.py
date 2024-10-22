@@ -106,7 +106,7 @@ def tifa_score_single(vqa_model, question_answer_pairs, img_path):
     result_dict = {}
     
     # compute the average score
-    averaged_scores = mean(tifa_scores)
+    averaged_scores = mean(tifa_scores) if len(tifa_scores)!=0 else 0
     
     result_dict = {"tifa_score": averaged_scores} 
     
