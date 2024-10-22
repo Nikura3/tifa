@@ -1,3 +1,5 @@
+# Testing TIFA for my master's thesis
+
 # TIFA: Accurate and Interpretable Text-to-Image Faithfulness Evaluation with Question Answering
 
 #### What is TIFA?
