@@ -3,9 +3,12 @@ from tifascore import get_llama2_pipeline, get_llama2_question_and_answers
 import json
 from config import RunConfig
 import os
+import pandas as pd
+import csv
 
-def readCSV(prompt_collection_path):
-    return [("001","A bus"), ("002","A bus and a bench")]
+def readCSV(eval_path):
+    df = pd.read_csv(os.path.join(eval_path,'QBench.csv'),dtype={'id': str})
+    return df
 
 def main(config : RunConfig):
     #Load the models
@@ -14,64 +17,83 @@ def main(config : RunConfig):
     #llama2 for local gpt model, from Hugging Face
     pipeline = get_llama2_pipeline(config.gpt_model)
 
-    if not (os.path.isdir(config.model_output_path)):
-        print("Prompt collection not found!")
+    if not (os.path.isdir(config.eval_path)):
+        print("Evaluation folder not found!")
     else:
-        # Walk through the directory and subdirectories
         
-
-        #TODO ADD SEQUENTIAL NUMBER IN EACH PROMPT!
         models_to_evaluate = []
-        for model in os.listdir(config.model_output_path):
-            if(os.path.isdir((os.path.join(config.model_output_path,model)))):
-                models_to_evaluate.append((os.path.join(config.model_output_path,model), model))
 
-        prompts_to_evaluate = readCSV(config.prompt_collection_path)
-
-        images = []
+        for model in os.listdir(config.eval_path):
+            if(os.path.isdir((os.path.join(config.eval_path,model)))):
+                #key is the model name
+                models_to_evaluate.append({
+                    'batch_gen_images_path':(os.path.join(config.eval_path,model)),#example:evaluation/QBench/QBench-SD14
+                    'folder_name':model, #example:QBench-SD14,
+                    'name':model[model.find('-')+1:]
+                    })
+        
+        headers = ['id', 'prompt', 'seed', 'object', 'object', 'human', 'human', 'animal', 'animal', 'food', 'food', 'activity', 'activity', 'attribute', 'attribute', 'counting', 'counting', 'color', 'color', 'material', 'material', 'spatial', 'spatial', 'location', 'location', 'shape', 'shape', 'other', 'other', 'tifa']
+        
         for model in models_to_evaluate:
-            for prompt in prompts_to_evaluate:
-                root_img_path = os.path.join(model[0],prompt[0]+'_'+prompt[1])
+            images = []
+            #id,prompt,obj1,bbox1,token1,obj2,token2,obj3,token3,obj4,bbox4,token4
+            prompt_collection = readCSV(config.eval_path)
+            for index,row in prompt_collection.iterrows(): 
+                #prompt_img_path = os.path.join(model[0],prompt[0]+'_'+prompt[1])
+                prompt_gen_images_path = os.path.join(model['batch_gen_images_path'],row['id']+'_'+row['prompt'])
                 #prompt = prompt[1]
-                for img_filename in os.listdir(root_img_path):
+                for img_filename in os.listdir(prompt_gen_images_path):
                     if not img_filename.endswith((".csv",".png")):
-                        img_path = os.path.join(root_img_path,img_filename)
-                        if(os.path.isfile(os.path.join(root_img_path,img_filename))):
-                            images.append((root_img_path, img_path , prompt[1] ,img_filename))
+                        img_path = os.path.join(prompt_gen_images_path,img_filename)
+                        if(os.path.isfile(img_path)):
+                            images.append({
+                                'prompt_gen_images_path':prompt_gen_images_path,
+                                'img_path': img_path,
+                                'img_filename':img_filename,
+                                'prompt_id':row['id'],
+                                'prompt':row['prompt'],
+                                'model':model['name'],
+                                'seed':img_filename.split('.')[0]
+                            })
+                            
+            images.sort(key=lambda x: (int(x['prompt_id']), int(x['seed'])))
+            
+            print("Starting evaluation process")
+            
+            #write mode
+            with open(prompt_collection[0]['model']+'.csv', mode='w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(headers)
 
-        # root_img_path, img_path, prompt, image_filename
-        # root_img_path: evaluation/QBench/QBench-BD_G 
-        # img_path: evaluation/QBench/QBench-BG_G/001_A bus/1.jpg
-        # prompt: A bus 
-        # image_name: 1.jpg
-        images.sort(key=lambda x: (x[0], x[2], int(x[3].split('.')[0])))
+            #append mode
+            with open(prompt_collection[0]['model']+'.csv', mode='a', newline='') as file:
+                writer = csv.writer(file)
+
+                #headers = {'id', 'prompt', 'seed', 'object', 'object', 'human', 'score', 'animal', 'animal', 'food', 'food', 'activity', 'activity', 'attribute', 'attribute', 'counting', 'counting', 'color', 'color', 'material', 'material', 'spatial', 'spatial', 'location', 'location', 'shape', 'shape', 'other', 'tifa_score'}
         
-        print("Starting evaluation process")
-        for image in images:
-            root_img_path = image[0]
-            img_path = image[1]
-            prompt = image [2]
+                
+                for image in images:
 
-            print("----")
-            print("PROMPT:",prompt)
-            print("PATH:",img_path)
+                    prompt = image['prompt']
+                    img_path = image['img_path']
 
-            llama2_questions = get_llama2_question_and_answers(pipeline,prompt)
-        
-            # Filter questions with UnifiedQA
-            filtered_questions = filter_question_and_answers(unifiedqa_model, llama2_questions)
+                    print("----")
+                    print("PROMPT:",prompt)
+                    print("PATH:",img_path)
 
-            # See the questions
-            #print(filtered_questions)
+                    llama2_questions = get_llama2_question_and_answers(pipeline,prompt)
+                
+                    # Filter questions with UnifiedQA
+                    filtered_questions = filter_question_and_answers(unifiedqa_model, llama2_questions)
 
-            # calculate TIFA score
-            result = tifa_score_single(vqa_model, filtered_questions, img_path)
-            #print("SCORE:",result['tifa_score'])
-            #print("-- question details: --")
-            #print(result['question_details'])
-            print("Questions:")
-            for question in result["question_details"].keys():
-                print(question," | Category: ",result["question_details"][question]["element_type"], " | Score: ",result["question_details"][question]["scores"])
+                    # calculate TIFA score
+                    result = tifa_score_single(vqa_model, filtered_questions, img_path)
+                    print("tifa score: ",result['tifa_score'])
+                    print("Questions:")
+                    for question in result["question_details"].keys():
+                        print(question," | Category: ",result["question_details"][question]["element_type"], " | Score: ",result["question_details"][question]["scores"])
+"""                         row = [row_data.get(header, None) for header in headers]
+                        writer.writerow(row)  # Write the specified row """
 
 if __name__ == "__main__":
 
