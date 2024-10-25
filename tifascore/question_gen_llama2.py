@@ -56,10 +56,7 @@ def parse_resp(resp):
     for line_number in range(6, len(resp)):
         line = resp[line_number]
         if line.startswith('About '):
-            print("LINE: ",line)
             whole_line = line[len('About '):-1]
-            print("WHOLE_LINE:",whole_line)
-            input()
             this_entity = whole_line.split(' (')[0]
             this_type = whole_line.split(' (')[1].split(')')[0]
 
