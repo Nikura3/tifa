@@ -35,7 +35,7 @@ def llama2_completion(pipeline, caption):
     prompt = create_qg_prompt(caption)
 
     sequences = pipeline(
-        prompt, do_sample=False, num_beams=5, num_return_sequences=1, max_length=512)
+        prompt, do_sample=False, num_beams=5, num_return_sequences=1, max_length=2048)
 
     output = sequences[0]['generated_text'][len(prompt):]
     output = output.split('\n\n')[0]
@@ -56,7 +56,10 @@ def parse_resp(resp):
     for line_number in range(6, len(resp)):
         line = resp[line_number]
         if line.startswith('About '):
+            print("LINE: ",line)
             whole_line = line[len('About '):-1]
+            print("WHOLE_LINE:",whole_line)
+            input()
             this_entity = whole_line.split(' (')[0]
             this_type = whole_line.split(' (')[1].split(')')[0]
 
