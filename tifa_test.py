@@ -15,6 +15,7 @@ def assignResults(id, prompt,seed,result):
                 'id':None,
                 'prompt':None,
                 'seed':None, 
+                'tifa_score':None,
                 'object_q':None,
                 'object_s':None,
                 'human_q':None,
@@ -42,8 +43,7 @@ def assignResults(id, prompt,seed,result):
                 'shape_q':None,
                 'shape_s':None,
                 'other_q':None,
-                'other_s':None,
-                'tifa_score':None
+                'other_s':None
             }
     new_row = row_reference.copy()
 
@@ -59,6 +59,24 @@ def assignResults(id, prompt,seed,result):
     
     new_row['tifa_score'] = result['tifa_score']
     return new_row
+
+def assignQuestionDetails(id, prompt,seed,scores):
+    questions={
+        "question":{}
+    }
+
+    for question in scores["question_details"].keys():
+        #uniqueid=id+prompt.replace(" ", "")+str(seed)
+
+        questions['question'][question]={
+                'element':scores["question_details"][question]["element"], # type: ignore
+                'element_type':scores["question_details"][question]["element_type"], # type: ignore
+                'choices':scores["question_details"][question]["choices"], # type: ignore
+                'free_form_vqa':scores["question_details"][question]["free_form_vqa"], # type: ignore
+                'multiple_choice_vqa':scores["question_details"][question]["multiple_choice_vqa"], # type: ignore
+                'score_by_question':scores["question_details"][question]["scores"]
+            } 
+    return questions
 
 
 def main(config : RunConfig):
@@ -84,10 +102,11 @@ def main(config : RunConfig):
                     })
         
         for model in models_to_evaluate:
-            results_df = pd.DataFrame({
+            scores_df = pd.DataFrame({
             'id':[],
             'prompt':[],
             'seed':[], 
+            'tifa_score':[],
             'object_q':[],
             'object_s':[],
             'human_q':[],
@@ -115,9 +134,13 @@ def main(config : RunConfig):
             'shape_q':[],
             'shape_s':[],
             'other_q':[],
-            'other_s':[],
-            'tifa_score':[]
+            'other_s':[]
             })
+
+            question_details={
+                'id_prompt_seed':{}
+            }
+
                 
             images = []
             #id,prompt,obj1,bbox1,token1,obj2,token2,obj3,token3,obj4,bbox4,token4
@@ -144,16 +167,6 @@ def main(config : RunConfig):
             
             print("Starting evaluation process")
             
-            #write mode
-            """  with open(prompt_collection[0]['model']+'.csv', mode='w', newline='') as file:
-                writer = csv.writer(file)
-                writer.writerow(headers)
-
-            #append mode
-            with open(prompt_collection[0]['model']+'.csv', mode='a', newline='') as file:
-                writer = csv.writer(file)"""
-                #headers = {'id', 'prompt', 'seed', 'object', 'object', 'human', 'score', 'animal', 'animal', 'food', 'food', 'activity', 'activity', 'attribute', 'attribute', 'counting', 'counting', 'color', 'color', 'material', 'material', 'spatial', 'spatial', 'location', 'location', 'shape', 'shape', 'other', 'tifa_score'}
-        
             #initialization
             prompt = images[0]['prompt']
             llama2_questions=get_llama2_question_and_answers(pipeline,prompt)
@@ -172,16 +185,22 @@ def main(config : RunConfig):
                 print("PATH:",img_path)
                 
                 # calculate TIFA score
-                result = tifa_score_single(vqa_model, filtered_questions, img_path)
+                scores = tifa_score_single(vqa_model, filtered_questions, img_path)
 
-                new_row=assignResults(image['prompt_id'],image['prompt'],image['seed'],result)
+                new_scores_row=assignResults(image['prompt_id'],image['prompt'],image['seed'],scores)
+                new_question_details_rows=assignQuestionDetails(image['prompt_id'],image['prompt'],image['seed'],scores)
 
-                results_df = pd.concat([results_df, pd.DataFrame([new_row])], ignore_index=True)
+                scores_df = pd.concat([scores_df, pd.DataFrame([new_scores_row])], ignore_index=True)
+                question_details['id_prompt_seed'][image['prompt_id']+image['prompt'].replace(" ", "")+str(image['seed'])]=new_question_details_rows
 
-                print("SCORE: ",result['tifa_score'])
+                print("SCORE: ", scores['tifa_score'])
+
             
             #output to csv
-            results_df.to_csv(os.path.join(model['batch_gen_images_path'],model['folder_name']+'.csv'), index=False)
+            scores_df.to_csv(os.path.join(model['batch_gen_images_path'],model['folder_name']+'.csv'), index=False)
+            #dump question details to json
+            with open(os.path.join(model['batch_gen_images_path'],model['folder_name']+'.json'), 'w') as fp:
+                json.dump(question_details, fp)
 
 if __name__ == "__main__":
 
