@@ -16,34 +16,20 @@ def assignResults(id, prompt,seed,result):
                 'prompt':None,
                 'seed':None, 
                 'tifa_score':None,
-                'object_q':None,
-                'object_s':None,
-                'human_q':None,
-                'human_s':None,
-                'animal_q':None,
-                'animal_s':None,
-                'animal/human_q':None,
-                'animal/human_s':None,
-                'food_q':None,
-                'food_s':None,
-                'activity_q':None,
-                'activity_s':None,
-                'attribute_q':None,
-                'attribute_s':None,
-                'counting_q':None,
-                'counting_s':None,
-                'color_q':None,
-                'color_s':None,
-                'material_q':None,
-                'material_s':None,
-                'spatial_q':None,
-                'spatial_s':None,
-                'location_q':None,
-                'location_s':None,
-                'shape_q':None,
-                'shape_s':None,
-                'other_q':None,
-                'other_s':None
+                'object_s':0,
+                'human_s':0,
+                'animal_s':0,
+                'animal/human_s':0,
+                'food_s':0,
+                'activity_s':0,
+                'attribute_s':0,
+                'counting_s':0,
+                'color_s':0,
+                'material_s':0,
+                'spatial_s':0,
+                'location_s':0,
+                'shape_s':0,
+                'other_s':0,
             }
     new_row = row_reference.copy()
 
@@ -51,12 +37,41 @@ def assignResults(id, prompt,seed,result):
     new_row['prompt']=prompt
     new_row['seed']=seed
     
+    count_questions_by_type={
+        'object_s':0,
+        'human_s':0,
+        'animal_s':0,
+        'animal/human_s':0,
+        'food_s':0,
+        'activity_s':0,
+        'attribute_s':0,
+        'counting_s':0,
+        'color_s':0,
+        'material_s':0,
+        'spatial_s':0,
+        'location_s':0,
+        'shape_s':0,
+        'other_s':0
+    }
+
+    #count number of questions by type
     for question in result["question_details"].keys(): 
-        type=result["question_details"][question]["element_type"]
+        type = result["question_details"][question]["element_type"]+'_s'
+        count_questions_by_type[type]=count_questions_by_type[type]+1
+
+    #accumulate scores
+    for question in result["question_details"].keys():    
         score_by_type=result["question_details"][question]["scores"]
-        new_row[str(type)+'_q']=question
-        new_row[str(type)+'_s']=score_by_type
-    
+        type = result["question_details"][question]["element_type"]+'_s'
+        new_row[type]=new_row[type]+score_by_type
+
+    #average accuracies
+    for scores in new_row.keys():
+        if scores not in ["id", "prompt", "seed", "tifa_score"]:
+            number_of_questions = count_questions_by_type[scores]
+            if(number_of_questions != 0):
+                new_row[scores]=new_row[scores]/number_of_questions
+
     new_row['tifa_score'] = result['tifa_score']
     return new_row
 
@@ -66,14 +81,12 @@ def assignQuestionDetails(id, prompt,seed,scores):
     }
 
     for question in scores["question_details"].keys():
-        #uniqueid=id+prompt.replace(" ", "")+str(seed)
-
         questions['question'][question]={
-                'element':scores["question_details"][question]["element"], # type: ignore
-                'element_type':scores["question_details"][question]["element_type"], # type: ignore
-                'choices':scores["question_details"][question]["choices"], # type: ignore
-                'free_form_vqa':scores["question_details"][question]["free_form_vqa"], # type: ignore
-                'multiple_choice_vqa':scores["question_details"][question]["multiple_choice_vqa"], # type: ignore
+                'element':scores["question_details"][question]["element"],
+                'element_type':scores["question_details"][question]["element_type"],
+                'choices':scores["question_details"][question]["choices"],
+                'free_form_vqa':scores["question_details"][question]["free_form_vqa"],
+                'multiple_choice_vqa':scores["question_details"][question]["multiple_choice_vqa"],
                 'score_by_question':scores["question_details"][question]["scores"]
             } 
     return questions
@@ -107,33 +120,19 @@ def main(config : RunConfig):
             'prompt':[],
             'seed':[], 
             'tifa_score':[],
-            'object_q':[],
             'object_s':[],
-            'human_q':[],
             'human_s':[],
-            'animal_q':[],
             'animal_s':[],
-            'animal/human_q':[],
             'animal/human_s':[],
-            'food_q':[],
             'food_s':[],
-            'activity_q':[],
             'activity_s':[],
-            'attribute_q':[],
             'attribute_s':[],
-            'counting_q':[],
             'counting_s':[],
-            'color_q':[],
             'color_s':[],
-            'material_q':[],
             'material_s':[],
-            'spatial_q':[],
             'spatial_s':[],
-            'location_q':[],
             'location_s':[],
-            'shape_q':[],
             'shape_s':[],
-            'other_q':[],
             'other_s':[]
             })
 
