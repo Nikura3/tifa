@@ -484,7 +484,6 @@ def calculate_extended_tifa(config : RunConfig):
             
             print("Starting evaluation process")
             
-            
             #intialize logger to map memory usage
             l=logger.Logger(os.path.join(config.eval_path,config.prompt_collection+'-'+images[0]['model']),config.tifa_version)
             
@@ -570,7 +569,7 @@ def calculate_extended_tifa(config : RunConfig):
                 #end stopwatch
                 #l.log_time_run(start,(end-(end_gap-start_gap)))
                 
-                with open(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_disagrements.txt'), 'w') as file:
+                with open(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_disagreements.txt'), 'w') as file:
                     #calculate IoU
                     if (len(predictions)!=0):
                         
@@ -578,15 +577,16 @@ def calculate_extended_tifa(config : RunConfig):
                             print("Some objects are not predicted by the object detector, please check!")
                             file.write(image['img_path']+" : Some objects are not predicted by the object detector, please check!\n")
                           """
-                        #save the image with the predictions    
-                        bboxes_image=torchvision.utils.draw_bounding_boxes(tf.pil_to_tensor(Image.open(img_path[:-4]+"_bboxes.png").convert("RGB")),
-                                                            torch.Tensor(list(predictions.values())),
-                                                            colors=['yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow'],
-                                                            width=4,
-                                                            font='font.ttf',
-                                                            font_size=20)
-                        tf.to_pil_image(bboxes_image).save(os.path.join(image['prompt_gen_images_path'],image['img_filename'][:-4]+'_detection.png'))
-                         
+                        #save the image with the predictions
+                        if(os.path.exists(img_path[:-4]+"_bboxes.png".exists())):    
+                            bboxes_image=torchvision.utils.draw_bounding_boxes(tf.pil_to_tensor(Image.open(img_path[:-4]+"_bboxes.png").convert("RGB")),
+                                                                torch.Tensor(list(predictions.values())),
+                                                                colors=['yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow'],
+                                                                width=4,
+                                                                font='font.ttf',
+                                                                font_size=20)
+                            tf.to_pil_image(bboxes_image).save(os.path.join(image['prompt_gen_images_path'],image['img_filename'][:-4]+'_detection.png'))
+                            
                         #a dict containing the IntesectionOverUnion between ground truth and predicted bounding boxes
                         ious={}
                         
