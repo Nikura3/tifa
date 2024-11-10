@@ -1,3 +1,5 @@
+import logger
+import time
 from tifascore import get_question_and_answers, filter_question_and_answers, UnifiedQAModel, tifa_score_benchmark, tifa_score_single,  VQAModel
 from tifascore import get_llama2_pipeline, get_llama2_question_and_answers
 import json
@@ -14,11 +16,25 @@ import torchvision.utils
 import torchvision.transforms.functional as tf
 import math
 
+#read prompt collection
 def readCSV(eval_path):
     df = pd.read_csv(os.path.join(eval_path,'QBench.csv'),dtype={'id': str})
     return df
 
-def assignResults(id, prompt,seed,result):
+# select the maximum IoU between two candidates, require list of coordinates
+def selectMaximumIoU(ground_truth,candidate1,candidate2):
+    maximum = 1
+    
+    iou1=bbIoU(ground_truth,candidate1)
+    iou2=bbIoU(ground_truth,candidate2)
+    
+    if(iou2>=iou1):
+        maximum = 2
+    
+    return maximum
+    
+
+def assignScoresByCategory(id, prompt,seed,result):
     row_reference={
                 'id':None,
                 'prompt':None,
@@ -83,6 +99,23 @@ def assignResults(id, prompt,seed,result):
     new_row['tifa_score'] = result['tifa_score']
     return new_row
 
+# extract the overall tifa score from the results
+def assignOverallScore(id, prompt,seed,result):
+    row_reference={
+                'id':None,
+                'prompt':None,
+                'seed':None, 
+                'tifa_score':None
+            }
+    new_row = row_reference.copy()
+
+    new_row['id']=id
+    new_row['prompt']=prompt
+    new_row['seed']=seed
+    new_row['tifa_score'] = result['tifa_score']
+
+    return new_row
+
 def assignQuestionDetails(id, prompt,seed,scores):
     questions={
         "question":{}
@@ -99,6 +132,7 @@ def assignQuestionDetails(id, prompt,seed,scores):
             } 
     return questions
 
+#calculate intersection over union on two bouding boxes (xmin,ymin,xmax,ymax)
 def bbIoU(boxA, boxB):
 	# determine the (x, y)-coordinates of the intersection rectangle
 	xA = max(boxA[0], boxB[0])
@@ -118,7 +152,7 @@ def bbIoU(boxA, boxB):
 	# return the intersection over union value
 	return iou
 
-def calculate_tifa(config : RunConfig):
+def calculate_tifa(config : RunConfig):    
     #Load the models
     unifiedqa_model = UnifiedQAModel(config.qa_model)
     vqa_model = VQAModel(config.vqa_model)
@@ -129,8 +163,8 @@ def calculate_tifa(config : RunConfig):
         print("Evaluation folder not found!")
     else:
         
+        #read the models to evaluate defined by directory structure
         models_to_evaluate = []
-
         for model in os.listdir(config.eval_path):
             if(os.path.isdir((os.path.join(config.eval_path,model)))):
                 #key is the model name
@@ -140,8 +174,11 @@ def calculate_tifa(config : RunConfig):
                     'name':model[model.find('-')+1:]
                     })
         
+        #for every model to evaluate, run this pipeline
         for model in models_to_evaluate:
-            scores_df = pd.DataFrame({
+            
+            #collection of scores for each prompt divided by category type
+            tifa_df = pd.DataFrame({
             'id':[],
             'prompt':[],
             'seed':[], 
@@ -161,12 +198,21 @@ def calculate_tifa(config : RunConfig):
             'shape_s':[],
             'other_s':[]
             })
+            
+            #collection of overall tifa score for each prompt
+            regular_df = pd.DataFrame({
+            'id':[],
+            'prompt':[],
+            'seed':[], 
+            'tifa_score':[]
+            })
 
-            question_details={
+            #collection of questions for each prompt made by tifa divided by category type
+            detailed_questions={
                 'id_prompt_seed':{}
             }
 
-                
+            #collection of images to evaluate, read the directory structure and collect information    
             images = []
             #id,prompt,obj1,bbox1,token1,obj2,token2,obj3,token3,obj4,bbox4,token4
             prompt_collection = readCSV(config.eval_path)
@@ -188,11 +234,15 @@ def calculate_tifa(config : RunConfig):
                                 'seed':img_filename.split('.')[0]
                             })
                             
+            #sort the images by prompt_id and seed for clarity        
             images.sort(key=lambda x: (int(x['prompt_id']), int(x['seed'])))
             
             print("Starting evaluation process")
             
-            #initialization
+            #intialize logger to map memory usage
+            l=logger.Logger(os.path.join(config.eval_path,config.prompt_collection+'-'+images[0]['model']),config.tifa_version)
+            
+            #initialize the variables needed for the evalation
             prompt = images[0]['prompt']
             llama2_questions=get_llama2_question_and_answers(pipeline,prompt)
             filtered_questions=filter_question_and_answers(unifiedqa_model, llama2_questions)
@@ -209,25 +259,43 @@ def calculate_tifa(config : RunConfig):
                 print("PROMPT:",prompt)
                 print("PATH:",img_path)
                 
+                #start stopwatch
+                start=time.time()
+                
                 # calculate TIFA score
                 scores = tifa_score_single(vqa_model, filtered_questions, img_path)
+                
+                #end stopwatch
+                end = time.time()
+                #save to logger
+                l.log_time_run(start,end)
 
-                new_scores_row=assignResults(image['prompt_id'],image['prompt'],image['seed'],scores)
+                new_scores_row=assignScoresByCategory(image['prompt_id'],image['prompt'],image['seed'],scores)
+                new_overall_score_row=assignOverallScore(image['prompt_id'],image['prompt'],image['seed'],scores)
                 new_question_details_rows=assignQuestionDetails(image['prompt_id'],image['prompt'],image['seed'],scores)
 
-                scores_df = pd.concat([scores_df, pd.DataFrame([new_scores_row])], ignore_index=True)
-                question_details['id_prompt_seed'][image['prompt_id']+image['prompt'].replace(" ", "")+str(image['seed'])]=new_question_details_rows
+                tifa_df = pd.concat([tifa_df, pd.DataFrame([new_scores_row])], ignore_index=True)
+                regular_df = pd.concat([regular_df, pd.DataFrame([new_overall_score_row])], ignore_index=True)
+                detailed_questions['id_prompt_seed'][image['prompt_id']+image['prompt'].replace(" ", "")+str(image['seed'])]=new_question_details_rows
 
                 print("SCORE: ", scores['tifa_score'])
 
             
-            #output to csv
-            scores_df.to_csv(os.path.join(model['batch_gen_images_path'],model['folder_name']+'.csv'), index=False)
+            #output scores by category type to csv
+            tifa_df.to_csv(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_tifa.csv'), index=False)
+            #output tifa overall score to csv
+            regular_df.to_csv(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_regular.csv'), index=False)
             #dump question details to json
-            with open(os.path.join(model['batch_gen_images_path'],model['folder_name']+'.json'), 'w') as fp:
-                json.dump(question_details, fp)
+            with open(os.path.join(model['batch_gen_images_path'],model['folder_name']+'detailed_questions.json'), 'w') as fp:
+                json.dump(detailed_questions, fp)
+    
+    #log gpu statistics
+    l.log_gpu_memory_instance()
+    #save to the performance log to csv
+    l.save_log_to_csv(config.tifa_version)
 
 def calculate_extended_tifa(config : RunConfig):
+    
     #Load the models
     unifiedqa_model = UnifiedQAModel(config.qa_model)
     vqa_model = VQAModel(config.vqa_model)
@@ -240,8 +308,8 @@ def calculate_extended_tifa(config : RunConfig):
         print("Evaluation folder not found!")
     else:
         
+        #read the models to evaluate defined by directory structure
         models_to_evaluate = []
-
         for model in os.listdir(config.eval_path):
             if(os.path.isdir((os.path.join(config.eval_path,model)))):
                 #key is the model name
@@ -251,8 +319,11 @@ def calculate_extended_tifa(config : RunConfig):
                     'name':model[model.find('-')+1:]
                     })
         
+        #for every model to evaluate, run this pipeline
         for model in models_to_evaluate:
-            scores_df = pd.DataFrame({
+            
+            #collection of scores for each prompt divided by category type
+            tifa_df = pd.DataFrame({
             'id':[],
             'prompt':[],
             'seed':[], 
@@ -272,11 +343,24 @@ def calculate_extended_tifa(config : RunConfig):
             'shape_s':[],
             'other_s':[]
             })
-
-            question_details={
+            
+            #collection of overall tifa score for each prompt
+            extended_df = pd.DataFrame({
+            'id':[],
+            'prompt':[],
+            'seed':[], 
+            'tifa_score':[],
+            'accuracy@0.5':[],
+            'accuracy@0.7':[],
+            'accuracy@0.9':[]
+            })
+            
+            #collection of questions for each prompt made by tifa divided by category type
+            detailed_questions={
                 'id_prompt_seed':{}
             }
-
+            
+            #collection of images to evaluate, read the directory structure and collect information
             images = [] # attributes for each generated image
             #id,prompt,obj1,bbox1,token1,obj2,token2,obj3,token3,obj4,bbox4,token4
             prompt_collection = readCSV(config.eval_path)
@@ -305,14 +389,21 @@ def calculate_extended_tifa(config : RunConfig):
                                 'obj4': row['obj4'] if row['obj4']is not None else math.nan,
                                 'bbox4':row['bbox4']if row['bbox4']is not None else math.nan,
                             })
-                            
+                      
+            #sort the images by prompt_id and seed for clarity       
             images.sort(key=lambda x: (int(x['prompt_id']), int(x['seed'])))
+            
             print("Starting evaluation process")
             
-            #initialization
-            prompt = images[0]['prompt']
-            ground_truth = {} #ground truth bounding boxes
             
+            #intialize logger to map memory usage
+            l=logger.Logger(os.path.join(config.eval_path,config.prompt_collection+'-'+images[0]['model']),config.tifa_version)
+            
+            #initialize the variables needed for the evalation
+            prompt = images[0]['prompt']
+            llama2_questions=get_llama2_question_and_answers(tifa_pipeline,prompt)
+            filtered_questions=filter_question_and_answers(unifiedqa_model, llama2_questions)
+            ground_truth = {} #ground truth bounding boxes
             if not (isinstance(images[0]['obj1'], (int,float)) and math.isnan(images[0]['obj1'])):
                 ground_truth[images[0]['obj1']] = [int(x) for x in images[0]['bbox1'].split(',')]
             if not (isinstance(images[0]['obj2'], (int,float)) and math.isnan(images[0]['obj2'])):
@@ -322,9 +413,7 @@ def calculate_extended_tifa(config : RunConfig):
             if not (isinstance(images[0]['obj4'], (int,float)) and math.isnan(images[0]['obj4'])):
                 ground_truth[images[0]['obj4']] = [int(x) for x in images[0]['bbox4'].split(',')]
             
-            llama2_questions=get_llama2_question_and_answers(tifa_pipeline,prompt)
-            filtered_questions=filter_question_and_answers(unifiedqa_model, llama2_questions)
-
+        
             for image in images:
                 img_path = image['img_path']
                     
@@ -341,6 +430,7 @@ def calculate_extended_tifa(config : RunConfig):
                     if not (isinstance(image['obj4'], (int,float)) and math.isnan(image['obj4'])):
                         ground_truth[image['obj4']]= [int(x) for x in image['bbox4'].split(',')]              
                     
+                    # if prompt changes, generate a new set of question-answer pairs
                     llama2_questions = get_llama2_question_and_answers(tifa_pipeline,prompt)
                     # Filter questions with UnifiedQA
                     filtered_questions = filter_question_and_answers(unifiedqa_model, llama2_questions)
@@ -349,30 +439,88 @@ def calculate_extended_tifa(config : RunConfig):
                 print("PROMPT:",prompt)
                 print("PATH:",img_path)
                 
-                # calculate TIFA score
+                #start stopwatch
+                start=time.time()
+                               
+                # Standard TIFA
                 scores = tifa_score_single(vqa_model, filtered_questions, img_path)
-
-                new_scores_row=assignResults(image['prompt_id'],image['prompt'],image['seed'],scores)
-                new_question_details_rows=assignQuestionDetails(image['prompt_id'],image['prompt'],image['seed'],scores)
-
-                scores_df = pd.concat([scores_df, pd.DataFrame([new_scores_row])], ignore_index=True)
-                question_details['id_prompt_seed'][image['prompt_id']+image['prompt'].replace(" ", "")+str(image['seed'])]=new_question_details_rows
-                print("SCORE: ", scores['tifa_score'])
                 
-                # Updated pipeline for object detection
+                # Extended TIFA enhanced with object detection
                 pil_image = Image.open(img_path).convert("RGB")
                 preds = object_detector(pil_image, candidate_labels=ground_truth.keys())
-                 
-                predictions={}
+                
+                end=time.time()
+                l.log_time_run(start,end)
+                
+                #start_gap=time.time()
+                
+                #Regular TIFA results
+                new_scores_row=assignScoresByCategory(image['prompt_id'],image['prompt'],image['seed'],scores)
+                new_question_details_rows=assignQuestionDetails(image['prompt_id'],image['prompt'],image['seed'],scores)
+
+                tifa_df = pd.concat([tifa_df, pd.DataFrame([new_scores_row])], ignore_index=True)
+                detailed_questions['id_prompt_seed'][image['prompt_id']+image['prompt'].replace(" ", "")+str(image['seed'])]=new_question_details_rows
+                print("SCORE: ", scores['tifa_score'])
+                
+                #Extended TIFA results
+                predictions={}# distinct predictions, one for each element even if multiple predictions are made by the detector
                 for p in preds:
-                    predictions[p['label']]=list(p['box'].values())          
+                    candidate = list(p['box'].values()) #add new entry as default
+                    if(p['label'] in predictions.keys()):# check if there are two predictions of the same element, select just the highest one
+                        max_iou=selectMaximumIoU(ground_truth[p['label']], #ground truth
+                                         list(p['box'].values()), #candidate1
+                                         predictions[p['label']] #candidate2
+                                         )
+                        if max_iou == 1: # if new candidate is higher than already existing one, substitute it. otherwise don't.
+                            predictions[p['label']]=candidate                            
+                    else:
+                        predictions[p['label']]=candidate                          
+                      
+                #end_gap=time.time()
+                
+                #end stopwatch
+                #l.log_time_run(start,(end-(end_gap-start_gap)))
+                
+                #calculate IoU
+                """ if (len(predictions)!=0):
+                    #an array containing the IntesectionOverUnion between ground truth and predicted bounding boxes
+                    ious={}
+                    for label in ground_truth.keys():
+                        ious[label]=float(0)
+                        
+                    for label in list(predictions.keys()):
+                        
+                        print("IoU over: "+label+" - "+ str(round(bbIoU(predictions[label],ground_truth[label]),2)))
+                        text = text+label+" : "+ str(round(bbIoU(predictions[label],ground_truth[label]),2))+"\n" 
+                            
+                    text = text[:-1]
+                    text_width, text_height = draw.textsize(text, font=font)
+                    padding = 10
+                    text_x = 512 - text_width - 10  # 10 pixels padding from the right edge
+                    text_y = 10  # 10 pixels padding from the top edge
+                    
+                    background_x0 = text_x - padding  # left
+                    background_y0 = text_y - padding  # top
+                    background_x1 = text_x + text_width + padding  # right
+                    background_y1 = text_y + text_height + padding  # bottom
+                    draw.rectangle([background_x0, background_y0, background_x1, background_y1], fill="white")
+
+                    
+                    draw.text((text_x, text_y), text, font=font, fill="black")
+                    edited_image.save(os.path.join(image['prompt_gen_images_path'],image['img_filename'][:-4]+'_detection.png'))
+                    
+                     """
+                    #tf.to_pil_image(edited_image).save(os.path.join(image['prompt_gen_images_path'],image['img_filename'][:-4]+'_detection.png'))
+                """ else:
+                    print("Warning: no objects found in the image by the object detector!")
+                 """        
                 
                 """ #calculate IoU
                     if (len(predictions)!=0):
                         for label in list(predictions.keys()):
                             print("IoU over: "+label+" - "+ str(round(bbIoU(predictions[label],ground_truth[label]),2))) 
                 """   
-                #draw the bounding predicted bounding boxes
+                """ #draw the bounding predicted bounding boxes
                 if(len(predictions)!=0):
                     edited_image=torchvision.utils.draw_bounding_boxes(tf.pil_to_tensor(Image.open(img_path[:-4]+"_bboxes.png").convert("RGB")),
                                                             torch.Tensor(list(predictions.values())),
@@ -415,15 +563,22 @@ def calculate_extended_tifa(config : RunConfig):
                     
                     #tf.to_pil_image(edited_image).save(os.path.join(image['prompt_gen_images_path'],image['img_filename'][:-4]+'_detection.png'))
                 else:
-                    print("Warning: no objects found by the object detector!")
+                    print("Warning: no objects found by the object detector!") """
 
-            #output to csv
-            scores_df.to_csv(os.path.join(model['batch_gen_images_path'],model['folder_name']+'.csv'), index=False)
+            #output scores by category type to csv
+            tifa_df.to_csv(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_tifa.csv'), index=False)
+            #output tifa overall score + IoU accuracies to csv
+            extended_df.to_csv(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_extended.csv'), index=False)
             #dump question details to json
             with open(os.path.join(model['batch_gen_images_path'],model['folder_name']+'.json'), 'w') as fp:
-                json.dump(question_details, fp)
+                json.dump(detailed_questions, fp)
+    #log gpu statistics
+    l.log_gpu_memory_instance()
+    #save to the performance log to csv
+    l.save_log_to_csv(config.tifa_version)
 
 def main(config:RunConfig):
+    
     if(config.tifa_version==TifaVersion.REGULAR):
         calculate_tifa(config)
     elif(config.tifa_version==TifaVersion.EXTENDED):
@@ -462,7 +617,7 @@ def test_obj_dect():
 
     image=torchvision.utils.draw_bounding_boxes(image,
                                                 torch.Tensor([[2,121,251,460],[274,345,503,496],[344,32,500,187],[58,327,187,403]]),
-    
+                                                #'blue', 'red', 'purple', 'orange', 'green', 'yellow', 'black', 'gray', 'white'
                                                 colors=['red', 'purple', 'orange', 'green', 'yellow', 'black', 'gray', 'white'],
                                                 width=4,
                                                 font="font.ttf",
@@ -484,34 +639,6 @@ def test_obj_dect():
     print("gt_bboxes",[58,327,187,303])
     print("predicted_bboxes",predicted_bboxes[3])
     print("IoU pizza:",bbIoU(predicted_bboxes[3],[58,327,187,303]))
-    
-
-    """ model_id = "IDEA-Research/grounding-dino-base"
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    
-    processor = AutoProcessor.from_pretrained(model_id)
-    model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id).to(device)
-
-    image_path = "evaluation/QBench/QBench-CAG/001_A bus and a bench/4.jpg"
-
-    # Open the image from the specified path
-    image = Image.open(image_path).convert("RGB")
-    # Check for cats and remote controls
-    # VERY important: text queries need to be lowercased + end with a dot
-    text = "a computer. a bench."
-
-    inputs = processor(images=image, text=text, return_tensors="pt").to(device)
-    with torch.no_grad():
-        outputs = model(**inputs)
-
-    results = processor.post_process_grounded_object_detection(
-        outputs,
-        inputs.input_ids,
-        box_threshold=0.4,
-        text_threshold=0.3,
-        target_sizes=[image.size[::-1]]
-    )
-    print(results) """
 
 if __name__ == "__main__":
     main(RunConfig())
