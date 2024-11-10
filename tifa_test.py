@@ -32,7 +32,46 @@ def selectMaximumIoU(ground_truth,candidate1,candidate2):
         maximum = 2
     
     return maximum
+
+def assignIous(id, prompt, seed, ground_truth,predictions,ious):
+    row_reference={
+                'id':None,
+                'prompt':None,
+                'seed':None, 
+                'obj1':None,
+                'iou1':None,
+                'gt_bb1':None,
+                'pred_bb1':None,
+                'obj2':None,
+                'iou2':None,
+                'gt_bb2':None,
+                'pred_bb2':None,
+                'obj3':None,
+                'iou3':None,
+                'gt_bb3':None,
+                'pred_bb3':None,
+                'obj4':None,
+                'iou4':None,
+                'gt_bb4':None,
+                'pred_bb4':None
+            }
+    new_row = row_reference.copy()
+
+    new_row['id']=id
+    new_row['prompt']=prompt
+    new_row['seed']=seed
     
+    index=1
+    for label in ground_truth.keys():
+        new_row['obj'+str(index)]=label
+        new_row['iou'+str(index)]=ious[label]
+        new_row['gt_bb'+str(index)]=ground_truth[label]
+        if label in predictions.keys():
+            new_row['pred_bb'+str(index)]=predictions[label]
+        else:
+            new_row['pred_bb'+str(index)]=None
+        index=index+1
+    return new_row
 
 def assignScoresByCategory(id, prompt,seed,result):
     row_reference={
@@ -99,6 +138,28 @@ def assignScoresByCategory(id, prompt,seed,result):
     new_row['tifa_score'] = result['tifa_score']
     return new_row
 
+def assignAccuracies(id, prompt,seed,result,accuracies):
+    row_reference={
+                'id':None,
+                'prompt':None,
+                'seed':None, 
+                'tifa_score':None,
+                'accuracy@0.5':0,
+                'accuracy@0.7':0,
+                'accuracy@0.9':0
+            }
+    new_row = row_reference.copy()
+
+    new_row['id']=id
+    new_row['prompt']=prompt
+    new_row['seed']=seed
+    new_row['tifa_score'] = result['tifa_score']
+    new_row['accuracy@0.5']=accuracies['0.5']
+    new_row['accuracy@0.7']=accuracies['0.7']
+    new_row['accuracy@0.9']=accuracies['0.9']
+    
+    return new_row
+
 # extract the overall tifa score from the results
 def assignOverallScore(id, prompt,seed,result):
     row_reference={
@@ -152,6 +213,11 @@ def bbIoU(boxA, boxB):
 	# return the intersection over union value
 	return iou
 
+#compute accuracy@k
+def computeAccuracyK(ious,k=0.5):
+    aboveK = list(map(lambda x: 1 if x >= k else 0, ious.values()))
+    return np.mean(aboveK)
+    
 def calculate_tifa(config : RunConfig):    
     #Load the models
     unifiedqa_model = UnifiedQAModel(config.qa_model)
@@ -286,7 +352,7 @@ def calculate_tifa(config : RunConfig):
             #output tifa overall score to csv
             regular_df.to_csv(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_regular.csv'), index=False)
             #dump question details to json
-            with open(os.path.join(model['batch_gen_images_path'],model['folder_name']+'detailed_questions.json'), 'w') as fp:
+            with open(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_detailed_questions.json'), 'w') as fp:
                 json.dump(detailed_questions, fp)
     
     #log gpu statistics
@@ -353,6 +419,29 @@ def calculate_extended_tifa(config : RunConfig):
             'accuracy@0.5':[],
             'accuracy@0.7':[],
             'accuracy@0.9':[]
+            })
+            
+            #collection of overall tifa score for each prompt
+            ious_df = pd.DataFrame({
+            'id':[],
+            'prompt':[],
+            'seed':[], 
+            'obj1':[],
+            'iou1':[],
+            'gt_bb1':[],
+            'pred_bb1':[],
+            'obj2':[],
+            'iou2':[],
+            'gt_bb2':[],
+            'pred_bb2':[],
+            'obj3':[],
+            'iou3':[],
+            'gt_bb3':[],
+            'pred_bb3':[],
+            'obj4':[],
+            'iou4':[],
+            'gt_bb4':[],
+            'pred_bb4':[],
             })
             
             #collection of questions for each prompt made by tifa divided by category type
@@ -481,97 +570,58 @@ def calculate_extended_tifa(config : RunConfig):
                 #end stopwatch
                 #l.log_time_run(start,(end-(end_gap-start_gap)))
                 
-                #calculate IoU
-                """ if (len(predictions)!=0):
-                    #an array containing the IntesectionOverUnion between ground truth and predicted bounding boxes
-                    ious={}
-                    for label in ground_truth.keys():
-                        ious[label]=float(0)
-                        
-                    for label in list(predictions.keys()):
-                        
-                        print("IoU over: "+label+" - "+ str(round(bbIoU(predictions[label],ground_truth[label]),2)))
-                        text = text+label+" : "+ str(round(bbIoU(predictions[label],ground_truth[label]),2))+"\n" 
-                            
-                    text = text[:-1]
-                    text_width, text_height = draw.textsize(text, font=font)
-                    padding = 10
-                    text_x = 512 - text_width - 10  # 10 pixels padding from the right edge
-                    text_y = 10  # 10 pixels padding from the top edge
-                    
-                    background_x0 = text_x - padding  # left
-                    background_y0 = text_y - padding  # top
-                    background_x1 = text_x + text_width + padding  # right
-                    background_y1 = text_y + text_height + padding  # bottom
-                    draw.rectangle([background_x0, background_y0, background_x1, background_y1], fill="white")
-
-                    
-                    draw.text((text_x, text_y), text, font=font, fill="black")
-                    edited_image.save(os.path.join(image['prompt_gen_images_path'],image['img_filename'][:-4]+'_detection.png'))
-                    
-                     """
-                    #tf.to_pil_image(edited_image).save(os.path.join(image['prompt_gen_images_path'],image['img_filename'][:-4]+'_detection.png'))
-                """ else:
-                    print("Warning: no objects found in the image by the object detector!")
-                 """        
-                
-                """ #calculate IoU
-                    if (len(predictions)!=0):
-                        for label in list(predictions.keys()):
-                            print("IoU over: "+label+" - "+ str(round(bbIoU(predictions[label],ground_truth[label]),2))) 
-                """   
-                """ #draw the bounding predicted bounding boxes
-                if(len(predictions)!=0):
-                    edited_image=torchvision.utils.draw_bounding_boxes(tf.pil_to_tensor(Image.open(img_path[:-4]+"_bboxes.png").convert("RGB")),
-                                                            torch.Tensor(list(predictions.values())),
-                                                            colors=['yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow'],
-                                                            width=5,
-                                                            font='font.ttf',
-                                                            font_size=20)
-                    #to draw on the image
-                    edited_image = tf.to_pil_image(edited_image)
-                    
-                    draw = ImageDraw.Draw(edited_image)
-                    
-                    text = "IoU\n"
-                    font_path = "font.ttf"  # Update this path if needed
-                    font_size = 25
-                    font = ImageFont.truetype(font_path, font_size)
-                    
+                with open(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_disagrements.txt'), 'w') as file:
                     #calculate IoU
                     if (len(predictions)!=0):
-                        for label in list(predictions.keys()):
-                            print("IoU over: "+label+" - "+ str(round(bbIoU(predictions[label],ground_truth[label]),2)))
-                            text = text+label+" : "+ str(round(bbIoU(predictions[label],ground_truth[label]),2))+"\n" 
+                        
+                        """ if (len(predictions)!= len(ground_truth)): # save disagreement if any
+                            print("Some objects are not predicted by the object detector, please check!")
+                            file.write(image['img_path']+" : Some objects are not predicted by the object detector, please check!\n")
+                          """
+                        #save the image with the predictions    
+                        bboxes_image=torchvision.utils.draw_bounding_boxes(tf.pil_to_tensor(Image.open(img_path[:-4]+"_bboxes.png").convert("RGB")),
+                                                            torch.Tensor(list(predictions.values())),
+                                                            colors=['yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow'],
+                                                            width=4,
+                                                            font='font.ttf',
+                                                            font_size=20)
+                        tf.to_pil_image(bboxes_image).save(os.path.join(image['prompt_gen_images_path'],image['img_filename'][:-4]+'_detection.png'))
+                         
+                        #a dict containing the IntesectionOverUnion between ground truth and predicted bounding boxes
+                        ious={}
+                        
+                        for label in ground_truth.keys(): #initialize to zero all the elements
+                            ious[label]=float(0)
                             
-                    text = text[:-1]
-                    text_width, text_height = draw.textsize(text, font=font)
-                    padding = 10
-                    text_x = 512 - text_width - 10  # 10 pixels padding from the right edge
-                    text_y = 10  # 10 pixels padding from the top edge
-                    
-                    background_x0 = text_x - padding  # left
-                    background_y0 = text_y - padding  # top
-                    background_x1 = text_x + text_width + padding  # right
-                    background_y1 = text_y + text_height + padding  # bottom
-                    draw.rectangle([background_x0, background_y0, background_x1, background_y1], fill="white")
-
-                    
-                    draw.text((text_x, text_y), text, font=font, fill="black")
-                    edited_image.save(os.path.join(image['prompt_gen_images_path'],image['img_filename'][:-4]+'_detection.png'))
-                    
-                    
-                    #tf.to_pil_image(edited_image).save(os.path.join(image['prompt_gen_images_path'],image['img_filename'][:-4]+'_detection.png'))
-                else:
-                    print("Warning: no objects found by the object detector!") """
+                        for label in list(predictions.keys()):
+                            ious[label] = round(bbIoU(predictions[label],ground_truth[label]),2)
+                            #text = text+label+" : "+ str(round(bbIoU(predictions[label],ground_truth[label]),2))+"\n" 
+                        
+                        accuracies = {} 
+                        accuracies['0.5'] = computeAccuracyK(ious,0.5)
+                        accuracies['0.7'] = computeAccuracyK(ious,0.7)
+                        accuracies['0.9'] = computeAccuracyK(ious,0.9)
+                        
+                        new_entry_iou = assignIous(image['prompt_id'],image['prompt'],image['seed'],ground_truth,predictions,ious)
+                        ious_df = pd.concat([ious_df, pd.DataFrame([new_entry_iou])], ignore_index=True)
+                        
+                        new_entry=assignAccuracies(image['prompt_id'],image['prompt'],image['seed'],scores,accuracies)
+                        extended_df = pd.concat([extended_df, pd.DataFrame([new_entry])], ignore_index=True)
+                        
+                    else:
+                        print("Warning: No objects found by the object detector, please check!")
+                        file.write(image['img_path']+" : No objects found by the object detector, please check!\n")
 
             #output scores by category type to csv
             tifa_df.to_csv(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_tifa.csv'), index=False)
+            #output IoUs to csv
+            ious_df.to_csv(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_ious.csv'), index=False)            
             #output tifa overall score + IoU accuracies to csv
             extended_df.to_csv(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_extended.csv'), index=False)
             #dump question details to json
-            with open(os.path.join(model['batch_gen_images_path'],model['folder_name']+'.json'), 'w') as fp:
+            with open(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_detailed_questions.json'), 'w') as fp:
                 json.dump(detailed_questions, fp)
+                
     #log gpu statistics
     l.log_gpu_memory_instance()
     #save to the performance log to csv
