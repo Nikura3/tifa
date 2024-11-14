@@ -452,7 +452,7 @@ def calculate_extended_tifa(config : RunConfig):
             #collection of images to evaluate, read the directory structure and collect information
             images = [] # attributes for each generated image
             #id,prompt,obj1,bbox1,token1,obj2,token2,obj3,token3,obj4,bbox4,token4
-            prompt_collection = readCSV(config.eval_path)
+            prompt_collection = readCSV(config.eval_path,config.prompt_collection)
             for index,row in prompt_collection.iterrows(): 
                 #prompt_img_path = os.path.join(model[0],prompt[0]+'_'+prompt[1])
                 prompt_gen_images_path = os.path.join(model['batch_gen_images_path'],row['id']+'_'+row['prompt'])
