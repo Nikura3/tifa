@@ -145,7 +145,9 @@ def assignAccuracies(id, prompt,seed,result,accuracies):
                 'seed':None, 
                 'tifa_score':None,
                 'accuracy@0.5':0,
+                'accuracy@0.6':0,
                 'accuracy@0.7':0,
+                'accuracy@0.8':0,
                 'accuracy@0.9':0
             }
     new_row = row_reference.copy()
@@ -155,7 +157,9 @@ def assignAccuracies(id, prompt,seed,result,accuracies):
     new_row['seed']=seed
     new_row['tifa_score'] = result['tifa_score']
     new_row['accuracy@0.5']=accuracies['0.5']
+    new_row['accuracy@0.6']=accuracies['0.6']
     new_row['accuracy@0.7']=accuracies['0.7']
+    new_row['accuracy@0.8']=accuracies['0.8']
     new_row['accuracy@0.9']=accuracies['0.9']
     
     return new_row
@@ -417,7 +421,9 @@ def calculate_extended_tifa(config : RunConfig):
             'seed':[], 
             'tifa_score':[],
             'accuracy@0.5':[],
+            'accuracy@0.6':[],
             'accuracy@0.7':[],
+            'accuracy@0.8':[],
             'accuracy@0.9':[]
             })
             
@@ -569,48 +575,49 @@ def calculate_extended_tifa(config : RunConfig):
                 #end stopwatch
                 #l.log_time_run(start,(end-(end_gap-start_gap)))
                 
-                with open(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_disagreements.txt'), 'w') as file:
-                    #calculate IoU
-                    if (len(predictions)!=0):
+                #calculate IoU
+                if (len(predictions)!=0):
+                    
+                    """ if (len(predictions)!= len(ground_truth)): # save disagreement if any
+                        print("Some objects are not predicted by the object detector, please check!")
+                        file.write(image['img_path']+" : Some objects are not predicted by the object detector, please check!\n")
+                        """
+                    #save the image with the predictions
+                    if(os.path.exists(img_path[:-4]+"_bboxes.png")):    
+                        bboxes_image=torchvision.utils.draw_bounding_boxes(tf.pil_to_tensor(Image.open(img_path[:-4]+"_bboxes.png").convert("RGB")),
+                                                            torch.Tensor(list(predictions.values())),
+                                                            colors=['red', 'red', 'red', 'red', 'red', 'red', 'red', 'red'],
+                                                            width=4,
+                                                            font='font.ttf',
+                                                            font_size=20)
+                        tf.to_pil_image(bboxes_image).save(os.path.join(image['prompt_gen_images_path'],image['img_filename'][:-4]+'_detection.png'))
                         
-                        """ if (len(predictions)!= len(ground_truth)): # save disagreement if any
-                            print("Some objects are not predicted by the object detector, please check!")
-                            file.write(image['img_path']+" : Some objects are not predicted by the object detector, please check!\n")
-                          """
-                        #save the image with the predictions
-                        if(os.path.exists(img_path[:-4]+"_bboxes.png".exists())):    
-                            bboxes_image=torchvision.utils.draw_bounding_boxes(tf.pil_to_tensor(Image.open(img_path[:-4]+"_bboxes.png").convert("RGB")),
-                                                                torch.Tensor(list(predictions.values())),
-                                                                colors=['yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow'],
-                                                                width=4,
-                                                                font='font.ttf',
-                                                                font_size=20)
-                            tf.to_pil_image(bboxes_image).save(os.path.join(image['prompt_gen_images_path'],image['img_filename'][:-4]+'_detection.png'))
-                            
-                        #a dict containing the IntesectionOverUnion between ground truth and predicted bounding boxes
-                        ious={}
+                    #a dict containing the IntesectionOverUnion between ground truth and predicted bounding boxes
+                    ious={}
+                    
+                    for label in ground_truth.keys(): #initialize to zero all the elements
+                        ious[label]=float(0)
                         
-                        for label in ground_truth.keys(): #initialize to zero all the elements
-                            ious[label]=float(0)
-                            
-                        for label in list(predictions.keys()):
-                            ious[label] = round(bbIoU(predictions[label],ground_truth[label]),2)
-                            #text = text+label+" : "+ str(round(bbIoU(predictions[label],ground_truth[label]),2))+"\n" 
-                        
-                        accuracies = {} 
-                        accuracies['0.5'] = computeAccuracyK(ious,0.5)
-                        accuracies['0.7'] = computeAccuracyK(ious,0.7)
-                        accuracies['0.9'] = computeAccuracyK(ious,0.9)
-                        
-                        new_entry_iou = assignIous(image['prompt_id'],image['prompt'],image['seed'],ground_truth,predictions,ious)
-                        ious_df = pd.concat([ious_df, pd.DataFrame([new_entry_iou])], ignore_index=True)
-                        
-                        new_entry=assignAccuracies(image['prompt_id'],image['prompt'],image['seed'],scores,accuracies)
-                        extended_df = pd.concat([extended_df, pd.DataFrame([new_entry])], ignore_index=True)
-                        
-                    else:
-                        print("Warning: No objects found by the object detector, please check!")
-                        file.write(image['img_path']+" : No objects found by the object detector, please check!\n")
+                    for label in list(predictions.keys()):
+                        ious[label] = round(bbIoU(predictions[label],ground_truth[label]),2)
+                        #text = text+label+" : "+ str(round(bbIoU(predictions[label],ground_truth[label]),2))+"\n" 
+                    
+                    accuracies = {} 
+                    accuracies['0.5'] = computeAccuracyK(ious,0.5)
+                    accuracies['0.6'] = computeAccuracyK(ious,0.6)
+                    accuracies['0.7'] = computeAccuracyK(ious,0.7)
+                    accuracies['0.8'] = computeAccuracyK(ious,0.8)
+                    accuracies['0.9'] = computeAccuracyK(ious,0.9)
+                    
+                    new_entry_iou = assignIous(image['prompt_id'],image['prompt'],image['seed'],ground_truth,predictions,ious)
+                    ious_df = pd.concat([ious_df, pd.DataFrame([new_entry_iou])], ignore_index=True)
+                    
+                    new_entry=assignAccuracies(image['prompt_id'],image['prompt'],image['seed'],scores,accuracies)
+                    extended_df = pd.concat([extended_df, pd.DataFrame([new_entry])], ignore_index=True)
+                    
+                else:
+                    print("Warning: No objects found by the object detector, please check!")
+                    #file.write(image['img_path']+" : No objects found by the object detector, please check!\n")
 
             #output scores by category type to csv
             tifa_df.to_csv(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_tifa.csv'), index=False)
