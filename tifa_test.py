@@ -144,6 +144,8 @@ def assignAccuracies(id, prompt,seed,result,accuracies):
                 'prompt':None,
                 'seed':None, 
                 'tifa_score':None,
+                'accuracy@0.3':0,
+                'accuracy@0.4':0,
                 'accuracy@0.5':0,
                 'accuracy@0.6':0,
                 'accuracy@0.7':0,
@@ -156,6 +158,8 @@ def assignAccuracies(id, prompt,seed,result,accuracies):
     new_row['prompt']=prompt
     new_row['seed']=seed
     new_row['tifa_score'] = result['tifa_score']
+    new_row['accuracy@0.3']=accuracies['0.3']
+    new_row['accuracy@0.4']=accuracies['0.4']
     new_row['accuracy@0.5']=accuracies['0.5']
     new_row['accuracy@0.6']=accuracies['0.6']
     new_row['accuracy@0.7']=accuracies['0.7']
@@ -218,7 +222,7 @@ def bbIoU(boxA, boxB):
 	return iou
 
 #compute accuracy@k
-def computeAccuracyK(ious,k=0.5):
+def computeAccuracyK(ious,k):
     aboveK = list(map(lambda x: 1 if x >= k else 0, ious.values()))
     return np.mean(aboveK)
     
@@ -420,6 +424,8 @@ def calculate_extended_tifa(config : RunConfig):
             'prompt':[],
             'seed':[], 
             'tifa_score':[],
+            'accuracy@0.3':[],
+            'accuracy@0.4':[],
             'accuracy@0.5':[],
             'accuracy@0.6':[],
             'accuracy@0.7':[],
@@ -629,6 +635,8 @@ def calculate_extended_tifa(config : RunConfig):
                         #text = text+label+" : "+ str(round(bbIoU(predictions[label],ground_truth[label]),2))+"\n" 
                     
                     accuracies = {} 
+                    accuracies['0.3'] = computeAccuracyK(ious,0.3)
+                    accuracies['0.4'] = computeAccuracyK(ious,0.4)
                     accuracies['0.5'] = computeAccuracyK(ious,0.5)
                     accuracies['0.6'] = computeAccuracyK(ious,0.6)
                     accuracies['0.7'] = computeAccuracyK(ious,0.7)
@@ -643,7 +651,6 @@ def calculate_extended_tifa(config : RunConfig):
                     
                 else:
                     print("Warning: No objects found by the object detector, please check!")
-                    #file.write(image['img_path']+" : No objects found by the object detector, please check!\n")
 
             #output scores by category type to csv
             tifa_df.to_csv(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_tifa.csv'), index=False)
@@ -655,12 +662,11 @@ def calculate_extended_tifa(config : RunConfig):
             with open(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_detailed_questions.json'), 'w') as fp:
                 json.dump(detailed_questions, fp)
             #close the error log file
-            err.close()
-                    
-    #log gpu statistics
-    l.log_gpu_memory_instance()
-    #save to the performance log to csv
-    l.save_log_to_csv(config.tifa_version)
+            err.close()                 
+            #log gpu statistics
+            l.log_gpu_memory_instance()
+            #save to the performance log to csv
+            l.save_log_to_csv(config.tifa_version)
 
 def main(config:RunConfig):
     
