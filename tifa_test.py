@@ -362,11 +362,10 @@ def calculate_tifa(config : RunConfig):
             #dump question details to json
             with open(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_detailed_questions.json'), 'w') as fp:
                 json.dump(detailed_questions, fp)
-    
-    #log gpu statistics
-    l.log_gpu_memory_instance()
-    #save to the performance log to csv
-    l.save_log_to_csv(config.tifa_version)
+            #log gpu statistics
+            l.log_gpu_memory_instance()
+            #save to the performance log to csv
+            l.save_log_to_csv(config.tifa_version)
 
 def calculate_extended_tifa(config : RunConfig):
     
