@@ -73,6 +73,42 @@ def assignIous(id, prompt, seed, ground_truth,predictions,ious):
         index=index+1
     return new_row
 
+def assignNoIous(id, prompt, seed, ground_truth):
+    row_reference={
+                'id':None,
+                'prompt':None,
+                'seed':None, 
+                'obj1':None,
+                'iou1':None,
+                'gt_bb1':None,
+                'pred_bb1':None,
+                'obj2':None,
+                'iou2':None,
+                'gt_bb2':None,
+                'pred_bb2':None,
+                'obj3':None,
+                'iou3':None,
+                'gt_bb3':None,
+                'pred_bb3':None,
+                'obj4':None,
+                'iou4':None,
+                'gt_bb4':None,
+                'pred_bb4':None
+            }
+    new_row = row_reference.copy()
+
+    new_row['id']=id
+    new_row['prompt']=prompt
+    new_row['seed']=seed
+    
+    index=1
+    for label in ground_truth.keys():
+        new_row['obj'+str(index)]=label
+        new_row['iou'+str(index)]=float(0)
+        new_row['gt_bb'+str(index)]=ground_truth[label]
+        index=index+1
+    return new_row
+
 def assignScoresByCategory(id, prompt,seed,result):
     row_reference={
                 'id':None,
@@ -165,6 +201,36 @@ def assignAccuracies(id, prompt,seed,result,accuracies):
     new_row['accuracy@0.7']=accuracies['0.7']
     new_row['accuracy@0.8']=accuracies['0.8']
     new_row['accuracy@0.9']=accuracies['0.9']
+    
+    return new_row
+
+def assignNoAccuracies(id, prompt,seed,result):
+    row_reference={
+                'id':None,
+                'prompt':None,
+                'seed':None, 
+                'tifa_score':None,
+                'accuracy@0.3':0,
+                'accuracy@0.4':0,
+                'accuracy@0.5':0,
+                'accuracy@0.6':0,
+                'accuracy@0.7':0,
+                'accuracy@0.8':0,
+                'accuracy@0.9':0
+            }
+    new_row = row_reference.copy()
+
+    new_row['id']=id
+    new_row['prompt']=prompt
+    new_row['seed']=seed
+    new_row['tifa_score'] = result['tifa_score']
+    new_row['accuracy@0.3']=0
+    new_row['accuracy@0.4']=0
+    new_row['accuracy@0.5']=0
+    new_row['accuracy@0.6']=0
+    new_row['accuracy@0.7']=0
+    new_row['accuracy@0.8']=0
+    new_row['accuracy@0.9']=0
     
     return new_row
 
@@ -676,6 +742,11 @@ def calculate_extended_tifa(config : RunConfig):
                     
                 else:
                     print("Warning: No objects found by the object detector, please check!")
+                    new_entry_no_iou = assignNoIous(image['prompt_id'],image['prompt'],image['seed'],ground_truth)
+                    ious_df = pd.concat([ious_df, pd.DataFrame([new_entry_no_iou])], ignore_index=True)
+                    
+                    new_entry_no_preds=assignNoAccuracies(image['prompt_id'],image['prompt'],image['seed'],scores)
+                    extended_df = pd.concat([extended_df, pd.DataFrame([new_entry_no_preds])], ignore_index=True)
 
             #output scores by category type to csv
             tifa_df.to_csv(os.path.join(model['batch_gen_images_path'],model['folder_name']+'_tifa.csv'), index=False)
