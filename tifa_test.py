@@ -180,6 +180,8 @@ def assignAccuracies(id, prompt,seed,result,accuracies):
                 'prompt':None,
                 'seed':None, 
                 'tifa_score':None,
+                'accuracy@0.1':0,
+                'accuracy@0.2':0,
                 'accuracy@0.3':0,
                 'accuracy@0.4':0,
                 'accuracy@0.5':0,
@@ -194,6 +196,8 @@ def assignAccuracies(id, prompt,seed,result,accuracies):
     new_row['prompt']=prompt
     new_row['seed']=seed
     new_row['tifa_score'] = result['tifa_score']
+    new_row['accuracy@0.1']=accuracies['0.1']
+    new_row['accuracy@0.2']=accuracies['0.2']
     new_row['accuracy@0.3']=accuracies['0.3']
     new_row['accuracy@0.4']=accuracies['0.4']
     new_row['accuracy@0.5']=accuracies['0.5']
@@ -210,6 +214,8 @@ def assignNoAccuracies(id, prompt,seed,result):
                 'prompt':None,
                 'seed':None, 
                 'tifa_score':None,
+                'accuracy@0.1':0,
+                'accuracy@0.2':0,
                 'accuracy@0.3':0,
                 'accuracy@0.4':0,
                 'accuracy@0.5':0,
@@ -224,6 +230,8 @@ def assignNoAccuracies(id, prompt,seed,result):
     new_row['prompt']=prompt
     new_row['seed']=seed
     new_row['tifa_score'] = result['tifa_score']
+    new_row['accuracy@0.1']=0
+    new_row['accuracy@0.2']=0
     new_row['accuracy@0.3']=0
     new_row['accuracy@0.4']=0
     new_row['accuracy@0.5']=0
@@ -515,6 +523,8 @@ def calculate_extended_tifa(config : RunConfig):
             'prompt':[],
             'seed':[], 
             'tifa_score':[],
+            'accuracy@0.1':[],
+            'accuracy@0.2':[],
             'accuracy@0.3':[],
             'accuracy@0.4':[],
             'accuracy@0.5':[],
@@ -726,6 +736,8 @@ def calculate_extended_tifa(config : RunConfig):
                         #text = text+label+" : "+ str(round(bbIoU(predictions[label],ground_truth[label]),2))+"\n" 
                     
                     accuracies = {} 
+                    accuracies['0.1'] = computeAccuracyK(ious,0.1)
+                    accuracies['0.2'] = computeAccuracyK(ious,0.2)
                     accuracies['0.3'] = computeAccuracyK(ious,0.3)
                     accuracies['0.4'] = computeAccuracyK(ious,0.4)
                     accuracies['0.5'] = computeAccuracyK(ious,0.5)

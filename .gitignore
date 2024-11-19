@@ -5,3 +5,4 @@ tifa/.DS_Store
 evaluation/
 temp/
 *.png
+accuracies/
