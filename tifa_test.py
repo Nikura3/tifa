@@ -732,7 +732,7 @@ def calculate_extended_tifa(config : RunConfig):
                         ious[label]=float(0)
                         
                     for label in list(predictions.keys()):
-                        ious[label] = round(bbIoU(predictions[label],ground_truth[label]),2)
+                        ious[label] = round(bbIoU(predictions[label],ground_truth[label]),6)
                         #text = text+label+" : "+ str(round(bbIoU(predictions[label],ground_truth[label]),2))+"\n" 
                     
                     accuracies = {} 
