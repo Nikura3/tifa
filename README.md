@@ -1,4 +1,4 @@
-# Testing TIFA for my master's thesis
+# Testing TIFA for my master thesis
 
 <div align="center">
 <h1>TIFA: Accurate and Interpretable Text-to-Image Faithfulness Evaluation with Question Answering</h1>
