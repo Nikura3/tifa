@@ -30,7 +30,11 @@ The repository expects the following structure for the folder containing the ima
 ```bash
 evaluation/
 │── prompt_collection1/
-│   │── prompt_collection1-G/
+│   │── prompt_collection1-model_name1/
+│   │   ├── 000_A bus/
+│   │   ├── 001_A bus and a bench/
+│   │   ├── ...
+|   │── prompt_collection1-model_name2/
 │   │   ├── 000_A bus/
 │   │   ├── 001_A bus and a bench/
 │   │   ├── ...
@@ -41,7 +45,7 @@ where:
 
 - `evaluation`: a folder in the root of the project
 - `prompt_collection1`: a folder containing everything is needed for the evaluation of that specific prompt collection
-- `prompt_collection1-G`: a folder containing the generated images, divided by prompt (e.g. `000_A bus`, `001_A bus and a bench` etc.)
+- `prompt_collection1-model_name`: a folder containing the generated images, divided by prompt (e.g. `000_A bus`, `001_A bus and a bench` etc.) by a specific model. More than one folder (and thus more than one model) can be present, all of them will be evaluated.
 - `prompt_collection1.csv`: a file containing the data about prompts and bounding boxes used to generate the images
 
 ## Configuration

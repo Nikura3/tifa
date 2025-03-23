@@ -339,7 +339,9 @@ def calculate_tifa(config : RunConfig):
                     'folder_name':model, #example:QBench-SD14,
                     'name':model[model.find('-')+1:]
                     })
-        
+        model_names = [model["name"] for model in models_to_evaluate]
+        print("The following models will be evluated:", model_names)
+
         #for every model to evaluate, run this pipeline
         for model in models_to_evaluate:
             
@@ -407,7 +409,7 @@ def calculate_tifa(config : RunConfig):
             err = open(model['folder_name']+"_errors.err", 'w')
             err.write(model['folder_name']+"\n")
             
-            print("Starting evaluation process")
+            print("Starting evaluation process for ", model['name'])
             
             #intialize logger to map memory usage
             l=logger.Logger(os.path.join(config.eval_path,config.prompt_collection+'-'+images[0]['model']),config.tifa_version)
@@ -509,6 +511,9 @@ def calculate_extended_tifa(config : RunConfig):
                     'folder_name':model, #example:QBench-SD14,
                     'name':model[model.find('-')+1:]
                     })
+                
+        model_names = [model["name"] for model in models_to_evaluate]
+        print("The following models will be evluated:", model_names)
         
         #for every model to evaluate, run this pipeline
         for model in models_to_evaluate:
