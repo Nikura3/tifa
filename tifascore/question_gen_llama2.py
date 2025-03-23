@@ -1,21 +1,30 @@
 import torch
 import json
 import transformers
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
 categories = ['object', 'human', 'animal', 'food', 'activity', 'attribute',
               'counting', 'color', 'material', 'spatial', 'location', 'shape', 'other']
 
 
+
 def get_llama2_pipeline(model_name="tifa-benchmark/llama2_tifa_question_generation"):
-    pipeline = transformers.pipeline(
+    print(f"Loading LLaMA model: {model_name}")
+
+    if not isinstance(model_name, str):
+        print(f"Expected model_name to be a string, got {type(model_name)}: {model_name}")
+    
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    text_pipeline = pipeline(
         "text-generation",
         model=model_name,
+        tokenizer=tokenizer,
         torch_dtype=torch.float16,
         device_map="auto",
     )
 
-    return pipeline
+    return text_pipeline
 
 
 # format dataset. Follow LLaMA 2 style

@@ -15,6 +15,7 @@ from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 import torchvision.utils
 import torchvision.transforms.functional as tf
 import math
+from scipy.integrate import trapezoid
 
 #read prompt collection
 def readCSV(eval_path,prompt_collection):
@@ -174,12 +175,19 @@ def assignScoresByCategory(id, prompt,seed,result):
     new_row['tifa_score'] = result['tifa_score']
     return new_row
 
+def calculate_auc(accuracies):
+    k_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    acc_values = [accuracies[str(k)] for k in k_values]
+    auc_value = trapezoid(acc_values, k_values)  # compute the integral
+    return auc_value
+
 def assignAccuracies(id, prompt,seed,result,accuracies):
     row_reference={
                 'id':None,
                 'prompt':None,
                 'seed':None, 
                 'tifa_score':None,
+                'accuracy@0.0':0,
                 'accuracy@0.1':0,
                 'accuracy@0.2':0,
                 'accuracy@0.3':0,
@@ -188,7 +196,9 @@ def assignAccuracies(id, prompt,seed,result,accuracies):
                 'accuracy@0.6':0,
                 'accuracy@0.7':0,
                 'accuracy@0.8':0,
-                'accuracy@0.9':0
+                'accuracy@0.9':0,
+                'accuracy@1.0':0,
+                'auc': 0,
             }
     new_row = row_reference.copy()
 
@@ -196,6 +206,7 @@ def assignAccuracies(id, prompt,seed,result,accuracies):
     new_row['prompt']=prompt
     new_row['seed']=seed
     new_row['tifa_score'] = result['tifa_score']
+    new_row['accuracy@0.0']=accuracies['0.0']
     new_row['accuracy@0.1']=accuracies['0.1']
     new_row['accuracy@0.2']=accuracies['0.2']
     new_row['accuracy@0.3']=accuracies['0.3']
@@ -205,6 +216,8 @@ def assignAccuracies(id, prompt,seed,result,accuracies):
     new_row['accuracy@0.7']=accuracies['0.7']
     new_row['accuracy@0.8']=accuracies['0.8']
     new_row['accuracy@0.9']=accuracies['0.9']
+    new_row['accuracy@1.0']=accuracies['1.0']
+    new_row['auc'] = calculate_auc(accuracies)
     
     return new_row
 
@@ -214,6 +227,7 @@ def assignNoAccuracies(id, prompt,seed,result):
                 'prompt':None,
                 'seed':None, 
                 'tifa_score':None,
+                'accuracy@0.0':0,
                 'accuracy@0.1':0,
                 'accuracy@0.2':0,
                 'accuracy@0.3':0,
@@ -222,7 +236,9 @@ def assignNoAccuracies(id, prompt,seed,result):
                 'accuracy@0.6':0,
                 'accuracy@0.7':0,
                 'accuracy@0.8':0,
-                'accuracy@0.9':0
+                'accuracy@0.9':0,
+                'accuracy@1.0':0,
+
             }
     new_row = row_reference.copy()
 
@@ -230,6 +246,7 @@ def assignNoAccuracies(id, prompt,seed,result):
     new_row['prompt']=prompt
     new_row['seed']=seed
     new_row['tifa_score'] = result['tifa_score']
+    new_row['accuracy@0.0']=0
     new_row['accuracy@0.1']=0
     new_row['accuracy@0.2']=0
     new_row['accuracy@0.3']=0
@@ -239,6 +256,7 @@ def assignNoAccuracies(id, prompt,seed,result):
     new_row['accuracy@0.7']=0
     new_row['accuracy@0.8']=0
     new_row['accuracy@0.9']=0
+    new_row['accuracy@1.0']=0
     
     return new_row
 
@@ -523,6 +541,7 @@ def calculate_extended_tifa(config : RunConfig):
             'prompt':[],
             'seed':[], 
             'tifa_score':[],
+            'accuracy@0.0':[],
             'accuracy@0.1':[],
             'accuracy@0.2':[],
             'accuracy@0.3':[],
@@ -531,7 +550,8 @@ def calculate_extended_tifa(config : RunConfig):
             'accuracy@0.6':[],
             'accuracy@0.7':[],
             'accuracy@0.8':[],
-            'accuracy@0.9':[]
+            'accuracy@0.9':[],
+            'accuracy@1.0':[],
             })
             
             #collection of overall tifa score for each prompt
@@ -736,6 +756,7 @@ def calculate_extended_tifa(config : RunConfig):
                         #text = text+label+" : "+ str(round(bbIoU(predictions[label],ground_truth[label]),2))+"\n" 
                     
                     accuracies = {} 
+                    accuracies['0.0'] = computeAccuracyK(ious,0.0)
                     accuracies['0.1'] = computeAccuracyK(ious,0.1)
                     accuracies['0.2'] = computeAccuracyK(ious,0.2)
                     accuracies['0.3'] = computeAccuracyK(ious,0.3)
@@ -745,6 +766,7 @@ def calculate_extended_tifa(config : RunConfig):
                     accuracies['0.7'] = computeAccuracyK(ious,0.7)
                     accuracies['0.8'] = computeAccuracyK(ious,0.8)
                     accuracies['0.9'] = computeAccuracyK(ious,0.9)
+                    accuracies['1.0'] = computeAccuracyK(ious,1.0)
                     
                     new_entry_iou = assignIous(image['prompt_id'],image['prompt'],image['seed'],ground_truth,predictions,ious)
                     ious_df = pd.concat([ious_df, pd.DataFrame([new_entry_iou])], ignore_index=True)
@@ -783,6 +805,7 @@ def main(config:RunConfig):
     elif(config.tifa_version==TifaVersion.EXTENDED):
         calculate_extended_tifa(config)
     
+    print("End of evaluation process")
     #test_obj_dect()
 
 def test_obj_dect():
