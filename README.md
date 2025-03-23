@@ -34,7 +34,7 @@ evaluation/
 │   │   ├── 000_A bus/
 │   │   ├── 001_A bus and a bench/
 │   │   ├── ...
-|   │── prompt_collection1-model_name2/
+│   │── prompt_collection1-model_name2/
 │   │   ├── 000_A bus/
 │   │   ├── 001_A bus and a bench/
 │   │   ├── ...
