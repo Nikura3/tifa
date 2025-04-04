@@ -238,7 +238,7 @@ def assignNoAccuracies(id, prompt,seed,result):
                 'accuracy@0.8':0,
                 'accuracy@0.9':0,
                 'accuracy@1.0':0,
-
+                'auc': 0,
             }
     new_row = row_reference.copy()
 
@@ -257,7 +257,7 @@ def assignNoAccuracies(id, prompt,seed,result):
     new_row['accuracy@0.8']=0
     new_row['accuracy@0.9']=0
     new_row['accuracy@1.0']=0
-    
+    new_row['auc'] = 0
     return new_row
 
 # extract the overall tifa score from the results
@@ -340,7 +340,7 @@ def calculate_tifa(config : RunConfig):
                     'name':model[model.find('-')+1:]
                     })
         model_names = [model["name"] for model in models_to_evaluate]
-        print("The following models will be evluated:", model_names)
+        print("The following models will be evaluated:", model_names)
 
         #for every model to evaluate, run this pipeline
         for model in models_to_evaluate:
@@ -411,7 +411,7 @@ def calculate_tifa(config : RunConfig):
             
             print("Starting evaluation process for ", model['name'])
             
-            #intialize logger to map memory usage
+            #initialize logger to map memory usage
             l=logger.Logger(os.path.join(config.eval_path,config.prompt_collection+'-'+images[0]['model']),config.tifa_version)
             
             #initialize the variables needed for the evalation
@@ -626,7 +626,7 @@ def calculate_extended_tifa(config : RunConfig):
             
             print("Starting evaluation process")
             
-            #intialize logger to map memory usage
+            #initialize logger to map memory usage
             l=logger.Logger(os.path.join(config.eval_path,config.prompt_collection+'-'+images[0]['model']),config.tifa_version)
             
             #initialize the variables needed for the evalation
@@ -691,7 +691,7 @@ def calculate_extended_tifa(config : RunConfig):
                 print("PROMPT:",prompt)
                 print("PATH:",img_path)
                 
-                #start stopwatch
+                # start stopwatch
                 start=time.time()
                             
                 # Standard TIFA
@@ -704,9 +704,9 @@ def calculate_extended_tifa(config : RunConfig):
                 end=time.time()
                 l.log_time_run(start,end)
                 
-                #start_gap=time.time()
+                # start_gap=time.time()
                 
-                #Regular TIFA results
+                # Regular TIFA results
                 new_scores_row=assignScoresByCategory(image['prompt_id'],image['prompt'],image['seed'],scores)
                 new_question_details_rows=assignQuestionDetails(image['prompt_id'],image['prompt'],image['seed'],scores)
 
@@ -717,30 +717,30 @@ def calculate_extended_tifa(config : RunConfig):
                 #Extended TIFA results
                 predictions={}# distinct predictions, one for each element even if multiple predictions are made by the detector
                 for p in preds:
-                    candidate = list(p['box'].values()) #add new entry as default
+                    candidate = list(p['box'].values()) # add new entry as default
                     if(p['label'] in predictions.keys()):# check if there are two predictions of the same element, select just the highest one
-                        max_iou=selectMaximumIoU(ground_truth[p['label']], #ground truth
-                                        list(p['box'].values()), #candidate1
-                                        predictions[p['label']] #candidate2
+                        max_iou=selectMaximumIoU(ground_truth[p['label']], # ground truth
+                                        list(p['box'].values()), # candidate1
+                                        predictions[p['label']] # candidate2
                                         )
                         if max_iou == 1: # if new candidate is higher than already existing one, substitute it. otherwise don't.
                             predictions[p['label']]=candidate                            
                     else:
                         predictions[p['label']]=candidate                          
                     
-                #end_gap=time.time()
+                # end_gap=time.time()
                 
-                #end stopwatch
-                #l.log_time_run(start,(end-(end_gap-start_gap)))
+                # end stopwatch
+                # l.log_time_run(start,(end-(end_gap-start_gap)))
                 
-                #calculate IoU
+                # calculate IoU
                 if (len(predictions)!=0):
                     
                     """ if (len(predictions)!= len(ground_truth)): # save disagreement if any
                         print("Some objects are not predicted by the object detector, please check!")
                         file.write(image['img_path']+" : Some objects are not predicted by the object detector, please check!\n")
                         """
-                    #save the image with the predictions
+                    # save the image with the predictions
                     if(os.path.exists(img_path[:-4]+"_bboxes.png")):    
                         bboxes_image=torchvision.utils.draw_bounding_boxes(tf.pil_to_tensor(Image.open(img_path[:-4]+"_bboxes.png").convert("RGB")),
                                                             torch.Tensor(list(predictions.values())),
@@ -750,7 +750,7 @@ def calculate_extended_tifa(config : RunConfig):
                                                             font_size=20)
                         tf.to_pil_image(bboxes_image).save(os.path.join(image['prompt_gen_images_path'],image['img_filename'][:-4]+'_detection.png'))
                         
-                    #a dict containing the IntesectionOverUnion between ground truth and predicted bounding boxes
+                    # a dict containing the IntesectionOverUnion between ground truth and predicted bounding boxes
                     ious={}
                     
                     for label in ground_truth.keys(): #initialize to zero all the elements
