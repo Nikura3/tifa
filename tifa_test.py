@@ -1,21 +1,24 @@
 import logger
 import time
-from tifascore import get_question_and_answers, filter_question_and_answers, UnifiedQAModel, tifa_score_benchmark, tifa_score_single,  VQAModel
+from tifascore import filter_question_and_answers, UnifiedQAModel, tifa_score_single, VQAModel
 from tifascore import get_llama2_pipeline, get_llama2_question_and_answers
 import json
 from config import RunConfig,TifaVersion
 from transformers import pipeline
 import os
 import pandas as pd
-from PIL import Image,ImageDraw, ImageFont
+from PIL import Image
 import numpy as np
 import csv
 import torch
-from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 import torchvision.utils
 import torchvision.transforms.functional as tf
 import math
 from scipy.integrate import trapezoid
+
+# for showing the images on colab with test_obj_dect()
+# import matplotlib.pyplot as plt
+# from torchvision.transforms.functional import to_pil_image
 
 #read prompt collection
 def readCSV(eval_path,prompt_collection):
@@ -495,12 +498,11 @@ def calculate_extended_tifa(config : RunConfig):
     #llama2 for local gpt model, from Hugging Face
     tifa_pipeline = get_llama2_pipeline(config.gpt_model)
     #Zero shot object detection pipeline
-    object_detector = pipeline("zero-shot-object-detection", model="google/owlvit-base-patch32", device="cuda")
+    object_detector = pipeline("zero-shot-object-detection", model="google/owlv2-base-patch16-ensemble", device="cuda")
 
     if not (os.path.isdir(config.eval_path)):
         print("Evaluation folder not found!")
     else:
-        
         #read the models to evaluate defined by directory structure
         models_to_evaluate = []
         for model in os.listdir(config.eval_path):
@@ -591,10 +593,9 @@ def calculate_extended_tifa(config : RunConfig):
             images = [] # attributes for each generated image
             #id,prompt,obj1,bbox1,token1,obj2,token2,obj3,token3,obj4,bbox4,token4
             prompt_collection = readCSV(config.eval_path,config.prompt_collection)
+
             for index,row in prompt_collection.iterrows(): 
-                #prompt_img_path = os.path.join(model[0],prompt[0]+'_'+prompt[1])
                 prompt_gen_images_path = os.path.join(model['batch_gen_images_path'],row['id']+'_'+row['prompt'])
-                #prompt = prompt[1]
                 for img_filename in os.listdir(prompt_gen_images_path):
                     if not img_filename.endswith((".csv",".png")):
                         img_path = os.path.join(prompt_gen_images_path,img_filename)
@@ -616,7 +617,7 @@ def calculate_extended_tifa(config : RunConfig):
                                 'obj4': row['obj4'] if row['obj4']is not None else math.nan,
                                 'bbox4':row['bbox4']if row['bbox4']is not None else math.nan,
                             })
-                      
+
             #sort the images by prompt_id and seed for clarity       
             images.sort(key=lambda x: (int(x['prompt_id']), int(x['seed'])))
             
@@ -704,8 +705,6 @@ def calculate_extended_tifa(config : RunConfig):
                 end=time.time()
                 l.log_time_run(start,end)
                 
-                # start_gap=time.time()
-                
                 # Regular TIFA results
                 new_scores_row=assignScoresByCategory(image['prompt_id'],image['prompt'],image['seed'],scores)
                 new_question_details_rows=assignQuestionDetails(image['prompt_id'],image['prompt'],image['seed'],scores)
@@ -715,10 +714,12 @@ def calculate_extended_tifa(config : RunConfig):
                 print("SCORE: ", scores['tifa_score'])
                 
                 #Extended TIFA results
-                predictions={}# distinct predictions, one for each element even if multiple predictions are made by the detector
+                predictions={} # distinct predictions, one for each element even if multiple predictions are made by the detector
+                
+                # basically, keep just one for each element, the one with the highest IoU
                 for p in preds:
                     candidate = list(p['box'].values()) # add new entry as default
-                    if(p['label'] in predictions.keys()):# check if there are two predictions of the same element, select just the highest one
+                    if (p['label'] in predictions.keys()): # check if there are two predictions of the same element, select just the highest one
                         max_iou=selectMaximumIoU(ground_truth[p['label']], # ground truth
                                         list(p['box'].values()), # candidate1
                                         predictions[p['label']] # candidate2
@@ -728,10 +729,6 @@ def calculate_extended_tifa(config : RunConfig):
                     else:
                         predictions[p['label']]=candidate                          
                     
-                # end_gap=time.time()
-                
-                # end stopwatch
-                # l.log_time_run(start,(end-(end_gap-start_gap)))
                 
                 # calculate IoU
                 if (len(predictions)!=0):
@@ -811,61 +808,84 @@ def main(config:RunConfig):
         calculate_extended_tifa(config)
     
     print("End of evaluation process")
-    #test_obj_dect()
+
 
 def test_obj_dect():
-    #Zero shot object detection pipeline
-    detector = pipeline("zero-shot-object-detection", model="google/owlvit-base-patch32", device="cuda")
+    from collections import defaultdict
 
-    image_path = "evaluation/QBench/QBench-CAG/003_A bus next to a bench with a bird and a pizza/14.jpg"
+    detector = pipeline("zero-shot-object-detection", model="google/owlv2-base-patch16-ensemble", device="cuda")
 
-    # Open the image from the specified path
+    image_path = '/content/3.jpg'
     image = Image.open(image_path).convert("RGB")
 
-    predictions = detector(image, candidate_labels=["bus","bench","bird","pizza"])
-    
-    predicted_labels=[]
-    predicted_bboxes=[]
-    for prediction in predictions:
-        predicted_labels.append(prediction['label'])
-        temp_coordinates=[]
-        for value in prediction['box'].values():
-            temp_coordinates.append(value)
-        predicted_bboxes.append(temp_coordinates)
+    candidate_labels = ["A tree", "A bridge"]
+    predictions = detector(image, candidate_labels=candidate_labels)
 
-    #draw the bounding boxes
-    image=torchvision.utils.draw_bounding_boxes(tf.pil_to_tensor(image),
-                                                torch.Tensor(predicted_bboxes),
-                                                labels=["bus","bench","bird","pizza"],
-                                                colors=['yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'black', 'gray', 'white'],
-                                                width=4,
-                                                font="font.ttf",
-                                                font_size=25)
+    # Define your ground truth boxes for each label
+    gt_boxes = {
+        "A tree": [41, 69, 214, 466],
+        "A bridge": [25, 310, 482, 474]
+    }
 
-    image=torchvision.utils.draw_bounding_boxes(image,
-                                                torch.Tensor([[2,121,251,460],[274,345,503,496],[344,32,500,187],[58,327,187,403]]),
-                                                #'blue', 'red', 'purple', 'orange', 'green', 'yellow', 'black', 'gray', 'white'
-                                                colors=['red', 'purple', 'orange', 'green', 'yellow', 'black', 'gray', 'white'],
-                                                width=4,
-                                                font="font.ttf",
-                                                font_size=25)
+    best_predictions = {}
+    for label in candidate_labels:
+        max_iou = -1
+        best_box = None
+        for pred in predictions:
+            if pred["label"] == label:
+                pred_box = list(pred["box"].values())
+                iou = bbIoU(pred_box, gt_boxes[label])
+                if iou > max_iou:
+                    max_iou = iou
+                    best_box = pred_box
+        if best_box:
+            best_predictions[label] = best_box
+
+    if not best_predictions:
+        print("No relevant objects detected.")
+        return
+
+    predicted_labels = list(best_predictions.keys())
+    predicted_bboxes = list(best_predictions.values())
+
+    print("Filtered predictions:")
+    print("Labels:", predicted_labels)
+    print("Boxes:", predicted_bboxes)
+
+    # Draw the boxes
+    image_tensor = tf.pil_to_tensor(image)
+    image_tensor = torchvision.utils.draw_bounding_boxes(
+        image_tensor,
+        torch.tensor(predicted_bboxes, dtype=torch.float),
+        labels=predicted_labels,
+        colors=["yellow"] * len(predicted_bboxes),
+        width=4,
+        font_size=25
+    )
+
+    # Draw ground truth boxes
+    gt_boxes_list = list(gt_boxes.values())
+    image_tensor = torchvision.utils.draw_bounding_boxes(
+        image_tensor,
+        torch.tensor(gt_boxes_list, dtype=torch.float),
+        colors=["red", "purple"],
+        width=4,
+        font_size=25
+    )
     
     tf.to_pil_image(image).save("pizza_bboxes.png")
-    print("gt_bboxes",[2,121,251,460])
-    print("predicted_bboxes",predicted_bboxes[0])
-    print("IoU bus:",bbIoU(predicted_bboxes[0],[2,121,251,460]))
-    
-    print("gt_bboxes",[274,345,503,496])
-    print("predicted_bboxes",predicted_bboxes[1])
-    print("IoU bench:",bbIoU(predicted_bboxes[1],[274,345,503,496]))
 
-    print("gt_bboxes",[344,32,500,187])
-    print("predicted_bboxes",predicted_bboxes[2])
-    print("IoU bird:",bbIoU(predicted_bboxes[2],[344,32,500,187]))
-    
-    print("gt_bboxes",[58,327,187,303])
-    print("predicted_bboxes",predicted_bboxes[3])
-    print("IoU pizza:",bbIoU(predicted_bboxes[3],[58,327,187,303]))
+    # Convert and show on colab
+    # pil_img = to_pil_image(image_tensor)
+    # plt.imshow(pil_img)
+    # plt.axis("off")
+    # plt.show()
+
+    # Print IoUs
+    for label in predicted_labels:
+        print(f"gt_box for {label}:", gt_boxes[label])
+        print(f"predicted_box for {label}:", best_predictions[label])
+        print(f"IoU for {label}:", bbIoU(best_predictions[label], gt_boxes[label]))
 
 if __name__ == "__main__":
     main(RunConfig())
